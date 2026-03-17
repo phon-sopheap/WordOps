@@ -69,7 +69,7 @@ class WOSiteCreateController(CementBaseController):
                      action='store', nargs='?')),
             (['-le', '--letsencrypt'],
                 dict(help="configure letsencrypt ssl for the site",
-                     action='store' or 'store_const',
+                     action='store',
                      choices=('on', 'subdomain', 'wildcard'),
                      const='on', nargs='?')),
             (['--force'],
@@ -77,7 +77,7 @@ class WOSiteCreateController(CementBaseController):
                      action='store_true')),
             (['--dns'],
                 dict(help="choose dns provider api for letsencrypt",
-                     action='store' or 'store_const',
+                     action='store',
                      const='dns_cf', nargs='?')),
             (['--dnsalias'],
                 dict(help="set domain used for acme dns alias validation",
@@ -116,6 +116,7 @@ class WOSiteCreateController(CementBaseController):
         # Check domain name validation
         data = dict()
         host, port = None, None
+        php_version = None
         try:
             stype, cache = detSitePar(vars(pargs))
         except RuntimeError as e:
@@ -427,19 +428,17 @@ class WOSiteCreateController(CementBaseController):
                               "and please try again")
 
                 try:
-                    wodbconfig = open("{0}/wo-config.php"
-                                      .format(wo_site_webroot),
-                                      encoding='utf-8', mode='w')
-                    wodbconfig.write("<?php \ndefine('DB_NAME', '{0}');"
-                                     "\ndefine('DB_USER', '{1}'); "
-                                     "\ndefine('DB_PASSWORD', '{2}');"
-                                     "\ndefine('DB_HOST', '{3}');\n?>"
-                                     .format(data['wo_db_name'],
-                                             data['wo_db_user'],
-                                             data['wo_db_pass'],
-                                             data['wo_db_host']))
-                    wodbconfig.close()
-                    stype = 'mysql'
+                    with open("{0}/wo-config.php"
+                              .format(wo_site_webroot),
+                              encoding='utf-8', mode='w') as wodbconfig:
+                        wodbconfig.write("<?php \ndefine('DB_NAME', '{0}');"
+                                         "\ndefine('DB_USER', '{1}'); "
+                                         "\ndefine('DB_PASSWORD', '{2}');"
+                                         "\ndefine('DB_HOST', '{3}');\n?>"
+                                         .format(data['wo_db_name'],
+                                                 data['wo_db_user'],
+                                                 data['wo_db_pass'],
+                                                 data['wo_db_host']))
                 except IOError as e:
                     Log.debug(self, str(e))
                     Log.debug(self, "Error occured while generating "
@@ -550,9 +549,9 @@ class WOSiteCreateController(CementBaseController):
             data['letsencrypt'] = True
             letsencrypt = True
             Log.debug(self, "Going to issue Let's Encrypt certificate")
-            acmedata = dict(
-                acme_domains, dns=False, acme_dns='dns_cf',
-                dnsalias=False, acme_alias='', keylength='')
+            acmedata = dict(dns=False, acme_dns='dns_cf',
+                            dnsalias=False, acme_alias='', keylength='',
+                            webroot='')
             if self.app.config.has_section('letsencrypt'):
                 acmedata['keylength'] = self.app.config.get(
                     'letsencrypt', 'keylength')
@@ -666,8 +665,6 @@ class WOSiteCreateController(CementBaseController):
                                  "Site is still available over HTTP. "
                                  "Check /var/log/wo/wordops.log for details.")
 
-                SSL.httpsredirect(self, wo_domain, acme_domains, True)
-                SSL.siteurlhttps(self, wo_domain)
                 if not WOService.reload_service(self, 'nginx'):
                     Log.error(self, "service nginx reload failed. "
                               "check issues with `nginx -t` command")
