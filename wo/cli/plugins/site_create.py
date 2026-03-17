@@ -569,7 +569,7 @@ class WOSiteCreateController(CementBaseController):
                 acmedata['dnsalias'] = True
                 acmedata['acme_alias'] = pargs.dnsalias
             if pargs.webroot or data.get('proxy'):
-                acmedata['webroot'] = "{0}".format(data['webroot'])
+                acmedata['webroot'] = "/var/www/html"
 
             # initialise both flags before any branch so neither is unbound
             acme_subdomain = False

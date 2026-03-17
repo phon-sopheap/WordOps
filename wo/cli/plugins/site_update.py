@@ -69,7 +69,7 @@ class WOSiteUpdateController(CementBaseController):
                      action='store', nargs='?')),
             (['-le', '--letsencrypt'],
                 dict(help="configure letsencrypt ssl for the site",
-                     action='store' or 'store_const',
+                     action='store',
                      choices=('on', 'off', 'renew', 'subdomain',
                               'wildcard', 'clean', 'purge'),
                      const='on', nargs='?')),
@@ -78,19 +78,19 @@ class WOSiteUpdateController(CementBaseController):
                      action='store_true')),
             (['--dns'],
                 dict(help="choose dns provider api for letsencrypt",
-                     action='store' or 'store_const',
+                     action='store',
                      const='dns_cf', nargs='?')),
             (['--dnsalias'],
                 dict(help="set domain used for acme dns alias validation",
                      action='store', nargs='?')),
             (['--hsts'],
                 dict(help="configure hsts for the site",
-                     action='store' or 'store_const',
+                     action='store',
                      choices=('on', 'off'),
                      const='on', nargs='?')),
             (['--ngxblocker'],
                 dict(help="enable Ultimate Nginx bad bot blocker",
-                     action='store' or 'store_const',
+                     action='store',
                      choices=('on', 'off'),
                      const='on', nargs='?')),
             (['--proxy'],
@@ -196,9 +196,9 @@ class WOSiteUpdateController(CementBaseController):
 
         if ((pargs.password or pargs.hsts or
              pargs.ngxblocker or pargs.letsencrypt == 'renew') and not (
-            pargs.html or pargs.php or pargs.php74 or pargs.php80 or
-            pargs.php81 or pargs.php82 or
-            pargs.php83 or pargs.php84 or pargs.mysql or pargs.wp or pargs.wpfc or pargs.wpsc or
+            pargs.html or pargs.php or
+            any(getattr(pargs, v, False) for v in WOVar.wo_php_versions) or
+            pargs.mysql or pargs.wp or pargs.wpfc or pargs.wpsc or
             pargs.wprocket or pargs.wpce or
                 pargs.wpsubdir or pargs.wpsubdomain)):
 
@@ -278,9 +278,8 @@ class WOSiteUpdateController(CementBaseController):
              (stype == 'wpsubdir' and oldsitetype in ['wpsubdomain']) or
              (stype == 'wpsubdomain' and oldsitetype in ['wpsubdir']) or
              (stype == oldsitetype and cache == oldcachetype)) and
-                not (pargs.php74 or pargs.php80 or
-                     pargs.php81 or pargs.php82 or
-                     pargs.php83 or pargs.php84 or pargs.alias)):
+                not (any(getattr(pargs, v, False) for v in WOVar.wo_php_versions)
+                     or pargs.alias)):
             Log.info(self, Log.FAIL + "can not update {0} {1} to {2} {3}".
                      format(oldsitetype, oldcachetype, stype, cache))
             return 1
@@ -361,8 +360,7 @@ class WOSiteUpdateController(CementBaseController):
                 if stype == 'wpsubdir':
                     data['wpsubdir'] = True
 
-        if ((pargs.php74 or pargs.php80 or pargs.php81 or
-             pargs.php82 or pargs.php83 or pargs.php84) and
+        if (any(getattr(pargs, v, False) for v in WOVar.wo_php_versions) and
                 (not data)):
             Log.debug(
                 self, "pargs php74, "
@@ -444,8 +442,9 @@ class WOSiteUpdateController(CementBaseController):
 
         if pargs.letsencrypt:
             acme_domains = []
-            acmedata = dict(acme_domains, dns=False, acme_dns='dns_cf',
-                            dnsalias=False, acme_alias='', keylength='')
+            acmedata = dict(dns=False, acme_dns='dns_cf',
+                            dnsalias=False, acme_alias='', keylength='',
+                            webroot='')
             acmedata['keylength'] = self.app.config.get('letsencrypt',
                                                         'keylength')
             if pargs.letsencrypt == 'on':

@@ -33,8 +33,9 @@ class WOAcme:
             try:
                 WOFileUtils.chdir(self, '/opt/acme.sh')
                 WOShellExec.cmd_exec(
-                    self, './acme.sh --install --home /etc/letsencrypt'
-                    '--config-home /etc/letsencrypt/config'
+                    self,
+                    './acme.sh --install --home /etc/letsencrypt '
+                    '--config-home /etc/letsencrypt/config '
                     '--cert-home /etc/letsencrypt/renewal'
                 )
                 WOShellExec.cmd_exec(
@@ -45,7 +46,9 @@ class WOAcme:
                 Log.debug(self, str(e))
                 Log.error(self, "acme.sh installation failed")
         if not os.path.exists('/etc/letsencrypt/acme.sh'):
-            Log.error(self, 'acme.sh ')
+            Log.error(self, "acme.sh not found at /etc/letsencrypt/acme.sh "
+                      "— installation may have failed. "
+                      "Check /var/log/wo/wordops.log for details.")
 
     def export_cert(self):
         """Export acme.sh csv certificate list"""
@@ -67,7 +70,7 @@ class WOAcme:
         # define variables
         all_domains = '\' -d \''.join(acme_domains)
         wo_acme_dns = acmedata['acme_dns']
-        keylenght = acmedata['keylength']
+        keylength = acmedata['keylength']
         if acmedata['dns'] is True:
             acme_mode = "--dns {0}".format(wo_acme_dns)
             validation_mode = "DNS mode with {0}".format(wo_acme_dns)
@@ -75,38 +78,40 @@ class WOAcme:
                 acme_mode = acme_mode + \
                     " --challenge-alias {0}".format(acmedata['acme_alias'])
         else:
-            acme_mode = "-w /var/www/html"
-            validation_mode = "Webroot challenge"
+            webroot_path = acmedata.get('webroot') or '/var/www/html'
+            acme_mode = "-w {0}".format(webroot_path)
+            validation_mode = "Webroot challenge ({0})".format(webroot_path)
             Log.debug(self, "Validation : Webroot mode")
-            if not os.path.isdir('/var/www/html/.well-known/acme-challenge'):
-                WOFileUtils.mkdir(
-                    self, '/var/www/html/.well-known/acme-challenge')
+            challenge_dir = os.path.join(
+                webroot_path, '.well-known', 'acme-challenge')
+            if not os.path.isdir(challenge_dir):
+                WOFileUtils.mkdir(self, challenge_dir)
             WOFileUtils.chown(
-                self, '/var/www/html/.well-known', 'www-data', 'www-data',
-                recursive=True)
-            WOFileUtils.chmod(self, '/var/www/html/.well-known', 0o750,
-                              recursive=True)
+                self, os.path.join(webroot_path, '.well-known'),
+                'www-data', 'www-data', recursive=True)
+            WOFileUtils.chmod(
+                self, os.path.join(webroot_path, '.well-known'),
+                0o750, recursive=True)
 
         Log.info(self, "Validation mode : {0}".format(validation_mode))
         Log.wait(self, "Issuing SSL cert with acme.sh")
         if not WOShellExec.cmd_exec(
                 self, "{0} ".format(WOAcme.wo_acme_exec) +
                 "--issue -d '{0}' {1} -k {2} -f"
-                .format(all_domains, acme_mode, keylenght), log=False):
+                .format(all_domains, acme_mode, keylength), log=False):
             Log.failed(self, "Issuing SSL cert with acme.sh")
             if acmedata['dns'] is True:
-                Log.error(
+                Log.warn(
                     self, "Please make sure you properly "
                     "set your DNS API credentials for acme.sh\n"
                     "If you are using sudo, use \"sudo -E wo\"")
-                return False
             else:
-                Log.error(
+                Log.warn(
                     self, "Your domain is properly configured "
                     "but acme.sh was unable to issue certificate.\n"
                     "You can find more informations in "
                     "/var/log/wo/wordops.log")
-                return False
+            return False
         else:
             Log.valide(self, "Issuing SSL cert with acme.sh")
             return True
@@ -163,16 +168,20 @@ class WOAcme:
             Log.debug(self, str(e))
             Log.debug(self, "Error occured while generating "
                       "ssl.conf")
-        return 0
+        return True
 
     def renew(self, domain):
         """Renew letsencrypt certificate with acme.sh"""
         # check acme.sh is installed
         WOAcme.check_acme(self)
         try:
-            WOShellExec.cmd_exec(
-                self, "{0} ".format(WOAcme.wo_acme_exec) +
-                "--renew -d {0} --ecc --force".format(domain), log=False)
+            if not WOShellExec.cmd_exec(
+                    self, "{0} ".format(WOAcme.wo_acme_exec) +
+                    "--renew -d {0} --ecc --force".format(domain), log=False):
+                Log.warn(self, "acme.sh returned a non-zero exit code "
+                         "while renewing {0}. "
+                         "Check /var/log/wo/wordops.log".format(domain))
+                return False
         except CommandExecutionError as e:
             Log.debug(self, str(e))
             Log.error(self, 'Unable to renew certificate')
@@ -204,17 +213,14 @@ class WOAcme:
         acme_cert = False
         # define new csv dialect
         csv.register_dialect('acmeconf', delimiter='|')
-        # open file
-        certfile = open('/var/lib/wo/cert.csv',
-                        mode='r', encoding='utf-8')
-        reader = csv.reader(certfile, 'acmeconf')
-        for row in reader:
-            # check if domain exist
-            if wo_domain_name == row[0]:
-                # check if cert expiration exist
-                if not row[3] == '':
-                    acme_cert = True
-        certfile.close()
+        with open('/var/lib/wo/cert.csv', mode='r', encoding='utf-8') as certfile:
+            reader = csv.reader(certfile, 'acmeconf')
+            for row in reader:
+                # check if domain exist
+                if wo_domain_name == row[0]:
+                    # check if cert expiration exist
+                    if not row[3] == '':
+                        acme_cert = True
         if acme_cert is True:
             if os.path.exists(
                 '/etc/letsencrypt/live/{0}/fullchain.pem'
