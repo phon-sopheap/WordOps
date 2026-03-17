@@ -1,5 +1,5 @@
 server {
-        listen 80;
+        listen 80 proxy_protocol;
         listen [::]:80;
         server_name {{domains}};
         return 301 https://$host$request_uri;

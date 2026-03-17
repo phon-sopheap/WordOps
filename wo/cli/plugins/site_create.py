@@ -82,6 +82,9 @@ class WOSiteCreateController(CementBaseController):
             (['--dnsalias'],
                 dict(help="set domain used for acme dns alias validation",
                      action='store', nargs='?')),
+            (['--webroot'],
+                dict(help="use webroot for letsencrypt HTTP-01 validation",
+                     action='store_true')),
             (['--hsts'],
                 dict(help="enable HSTS for site secured with letsencrypt",
                      action='store_true')),
@@ -565,6 +568,12 @@ class WOSiteCreateController(CementBaseController):
                 Log.debug(self, "DNS Alias enabled")
                 acmedata['dnsalias'] = True
                 acmedata['acme_alias'] = pargs.dnsalias
+            if pargs.webroot or data.get('proxy'):
+                acmedata['webroot'] = "{0}".format(data['webroot'])
+
+            # initialise both flags before any branch so neither is unbound
+            acme_subdomain = False
+            acme_wildcard = False
 
             # detect subdomain and set subdomain variable
             if pargs.letsencrypt == "subdomain":
@@ -614,6 +623,10 @@ class WOSiteCreateController(CementBaseController):
                                   .format(wo_domain, wo_root_domain))
                         # copy the cert from the root domain
                         copyWildcardCert(self, wo_domain, wo_root_domain)
+                        if pargs.hsts:
+                            SSL.setuphsts(self, wo_domain)
+                        SSL.httpsredirect(self, wo_domain, acme_domains, True)
+                        SSL.siteurlhttps(self, wo_domain)
                     else:
                         # check DNS records before issuing cert
                         if not acmedata['dns'] is True:
@@ -627,6 +640,14 @@ class WOSiteCreateController(CementBaseController):
                         if WOAcme.setupletsencrypt(
                                 self, acme_domains, acmedata):
                             WOAcme.deploycert(self, wo_domain)
+                            if pargs.hsts:
+                                SSL.setuphsts(self, wo_domain)
+                            SSL.httpsredirect(self, wo_domain, acme_domains, True)
+                            SSL.siteurlhttps(self, wo_domain)
+                        else:
+                            Log.warn(self, "SSL certificate issuance failed. "
+                                     "Site is still available over HTTP. "
+                                     "Check /var/log/wo/wordops.log for details.")
                 else:
                     if not acmedata['dns'] is True:
                         if not pargs.force:
@@ -636,9 +657,14 @@ class WOSiteCreateController(CementBaseController):
                     if WOAcme.setupletsencrypt(
                             self, acme_domains, acmedata):
                         WOAcme.deploycert(self, wo_domain)
-
-                if pargs.hsts:
-                    SSL.setuphsts(self, wo_domain)
+                        if pargs.hsts:
+                            SSL.setuphsts(self, wo_domain)
+                        SSL.httpsredirect(self, wo_domain, acme_domains, True)
+                        SSL.siteurlhttps(self, wo_domain)
+                    else:
+                        Log.warn(self, "SSL certificate issuance failed. "
+                                 "Site is still available over HTTP. "
+                                 "Check /var/log/wo/wordops.log for details.")
 
                 SSL.httpsredirect(self, wo_domain, acme_domains, True)
                 SSL.siteurlhttps(self, wo_domain)

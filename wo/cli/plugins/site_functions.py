@@ -22,6 +22,7 @@ from wo.core.mysql import (MySQLConnectionError, StatementExcecutionError,
 from wo.core.services import WOService
 from wo.core.shellexec import CommandExecutionError, WOShellExec
 from wo.core.sslutils import SSL
+from wo.core.template import WOTemplate
 from wo.core.variables import WOVar
 
 
@@ -117,6 +118,20 @@ def setupdomain(self, data):
             os.makedirs('{0}/logs'.format(wo_site_webroot))
         if not os.path.exists('{0}/conf/nginx'.format(wo_site_webroot)):
             os.makedirs('{0}/conf/nginx'.format(wo_site_webroot))
+
+        # Deploy real-ip.conf for proxy_protocol client IP restoration
+        WOTemplate.deploy(
+            self,
+            '{0}/conf/nginx/real-ip.conf'.format(wo_site_webroot),
+            'real-ip.mustache', {}, overwrite=False)
+
+        # Deploy locations-http-challenge.conf for acme challenge + deny hidden files
+        if data.get('proxy'):
+            WOTemplate.deploy(
+                self,
+                '{0}/conf/nginx/locations-http-challenge.conf'.format(wo_site_webroot),
+                'locations-http-challenge.mustache',
+                {'webroot': wo_site_webroot}, overwrite=False)
 
         WOFileUtils.create_symlink(self, ['/var/log/nginx/{0}.access.log'
                                           .format(wo_domain_name),

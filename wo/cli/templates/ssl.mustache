@@ -13,7 +13,7 @@ listen 443 quic;
 listen [::]:443 quic;
 
 # listen on port 443 with HTTP/2
-listen 443 ssl;
+listen 443 ssl proxy_protocol;
 listen [::]:443 ssl;
 {{/quic}}
 ssl_certificate     {{ssl_live_path}}/{{domain}}/fullchain.pem;
